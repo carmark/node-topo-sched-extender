@@ -1,0 +1,47 @@
+nodes:
+  - address: 172.16.10.23
+    user: rke
+    role: [controlplane,worker,etcd]
+    labels:
+      ingress: 'true'
+  - address: 172.16.10.24
+    user: rke
+    role: [controlplane,worker,etcd]
+  - address: 172.16.10.25
+    user: rke
+    role: [controlplane,worker,etcd]
+ingress:
+  provider: none
+
+ignore_docker_version: true
+sh_key_path: /root/.ssh/id_rsa
+cluster_name: k8s_test
+
+services:
+  kube-api:
+    service_cluster_ip_range: 10.96.0.0/16
+    service_node_port_range: 30000-42767
+    pod_security_policy: false
+  kubelet:
+    cluster_domain: cluster.local
+    cluster_dns_server: 10.96.0.10
+    fail_swap_on: false
+    extra_args:
+      max-pods: 250
+      cgroup-driver: cgroupfs
+  scheduler:
+    extra_args:
+      policy-config-file: /etc/kubernetes/scheduler-policy-config.json  
+
+  kube-controller:
+    cluster_cidr: 10.244.0.0/16
+    service_cluster_ip_range: 10.96.0.0/16
+
+authentication:
+  strategy: x509
+
+authorization:
+  mode: rbac
+
+network:
+  plugin: flannel
