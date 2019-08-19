@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"encoding/json"
 	"sync"
 
 	"k8s.io/api/core/v1"
@@ -38,34 +39,43 @@ func NewSchedulerCache(nLister corelisters.NodeLister, pLister corelisters.PodLi
 	}
 }
 
-func (cache *SchedulerCache) GetNodeinfos() []*NodeInfo {
-	nodes := []*NodeInfo{}
-	for _, n := range cache.nodes {
-		nodes = append(nodes, n)
-	}
-	return nodes
-}
-
-// build cache when initializing
+// BuildCache Build cache when initializing
 func (cache *SchedulerCache) BuildCache() error {
 	klog.V(2).Infof("begin to build scheduler cache")
-	pods, err := cache.podLister.List(labels.Everything())
-
+	nodes, err := cache.nodeLister.List(labels.Everything())
 	if err != nil {
+		klog.Errorf("Failed to list node list: %v", err)
 		return err
-	} else {
-		for _, pod := range pods {
-
-			if len(pod.Spec.NodeName) == 0 {
+	}
+	for _, node := range nodes {
+		var t Topology
+		if val, ok := node.Annotations["nvidia.com/gpu-topo"]; !ok {
+			continue
+		} else {
+			err = json.Unmarshal([]byte(val), &t)
+			if err != nil {
+				klog.Errorf("Failed to decode node's topology: %v", err)
 				continue
 			}
-
-			err = cache.AddOrUpdatePod(pod)
-			if err != nil {
-				return err
-			}
+		}
+		if err = cache.AddOrUpdateNode(node.Name, &t); err != nil {
+			klog.Errorf("Failed to AddOrUpdateNode: %v", node.Name)
+			return err
+		}
+	}
+	pods, err := cache.podLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, pod := range pods {
+		if len(pod.Spec.NodeName) == 0 {
+			continue
 		}
 
+		err = cache.AddOrUpdatePod(pod)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -75,7 +85,7 @@ func (cache *SchedulerCache) GetPod(name, namespace string) (*v1.Pod, error) {
 	return cache.podLister.Pods(namespace).Get(name)
 }
 
-// Get known pod from the pod UID
+// KnownPod Get known pod from the pod UID
 func (cache *SchedulerCache) KnownPod(podUID types.UID) bool {
 	cache.nLock.RLock()
 	defer cache.nLock.RUnlock()
@@ -84,6 +94,7 @@ func (cache *SchedulerCache) KnownPod(podUID types.UID) bool {
 	return found
 }
 
+// AddOrUpdatePod add/update pod
 func (cache *SchedulerCache) AddOrUpdatePod(pod *v1.Pod) error {
 	klog.V(2).Infof("Add or update pod info: %v", pod)
 	klog.V(2).Infof("Node %v", cache.nodes)
