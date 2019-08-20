@@ -96,9 +96,12 @@ func (n *NodeInfo) addOrUpdatePod(pod *v1.Pod) (added bool) {
 func (n *NodeInfo) MakeScore(pod *v1.Pod, gpuTopoNum int64) (int, error) {
 	// make sure we do the score for 2^n allocation
 	if gpuTopoNum&(gpuTopoNum-1) == 0 {
-		return -1, nil
+		return 0, nil
 	}
 	if gpuTopoNum == 1 {
+		if len(n.devs)%2 == 1 {
+			return 10, nil
+		}
 		return 1, nil
 	}
 	var score int
